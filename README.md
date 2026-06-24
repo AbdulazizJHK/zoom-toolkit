@@ -4,6 +4,12 @@ A bilingual (English / العربية) desktop app for managing audio recordings
 
 ![Zoom Toolkit](app_icon.ico)
 
+## Download
+
+Grab the latest Windows build from the [**Releases**](https://github.com/AbdulazizJHK/zoom-toolkit/releases/latest) page — download `Zoom Toolkit.exe` and run it (no install needed).
+
+> On first launch Windows may show a *"Windows protected your PC"* SmartScreen notice because the app isn't code-signed. Click **More info → Run anyway**. Some antivirus tools may also flag PyInstaller executables; this is a known false positive.
+
 ## Features
 
 - **Audio Extractor** — pulls `.wav`/`.mp3` (and more) out of nested sub-folders (e.g. Zoom `FOLDER01` SD-card layouts) into one directory, renaming to avoid overwrites, with optional auto-sort by date.
