@@ -1,0 +1,6 @@
+customtkinter==5.2.2
+mutagen
+arabic-reshaper
+python-bidi
+hijridate
+tkinterdnd2
