@@ -26,3 +26,9 @@ Thumbs.db
 # Local scratch / old prototypes
 New folder/
 *.log
+
+# MSIX build outputs (source manifest/assets/scripts are kept)
+msix/stage/
+msix/*.msix
+msix/*.pfx
+msix/*.cer

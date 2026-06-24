@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for Zoom Toolkit.
+
+  BEFORE submitting to the Microsoft Store you MUST replace the Identity values
+  below with the ones Partner Center shows for your reserved app
+  (Product management > Product identity):
+    - Identity Name           -> "Package/Identity/Name"
+    - Identity Publisher       -> "Package/Identity/Publisher"  (e.g. CN=XXXXXXXX...)
+    - PublisherDisplayName     -> your seller/display name
+  For LOCAL testing, the Publisher here must match the signing certificate's
+  subject (build_msix.ps1 -Sign creates a self-signed cert with CN=AbdulazizJHK).
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap rescap">
+
+  <Identity
+      Name="AbdulazizJHK.ZoomToolkit"
+      Publisher="CN=AbdulazizJHK"
+      Version="2.0.0.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Zoom Toolkit</DisplayName>
+    <PublisherDisplayName>AbdulazizJHK</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="ar" />
+  </Resources>
+
+  <Applications>
+    <Application Id="ZoomToolkit" Executable="ZoomToolkit.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+          DisplayName="Zoom Toolkit"
+          Description="Extract, clean, and date-sort audio from Zoom field recorders."
+          BackgroundColor="#0E1217"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+            Wide310x150Logo="Assets\Wide310x150Logo.png"
+            Square71x71Logo="Assets\Square71x71Logo.png"
+            Square310x310Logo="Assets\Square310x310Logo.png">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Full-trust Win32 app. The exe uses normal Win32 file APIs (os/shutil),
+         which work on user-chosen folders. If Store testing shows file moves are
+         blocked, add: <rescap:Capability Name="broadFileSystemAccess" /> and
+         justify it during certification. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
