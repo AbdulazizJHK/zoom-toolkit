@@ -67,7 +67,7 @@ def _ctk_unblock_update_dimensions_event(self):
 ctk.CTk.block_update_dimensions_event = _ctk_block_update_dimensions_event
 ctk.CTk.unblock_update_dimensions_event = _ctk_unblock_update_dimensions_event
 
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 ALL_AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg', '.aiff', '.wma']
 DEFAULT_AUDIO_EXTS = ['.wav', '.mp3']
 

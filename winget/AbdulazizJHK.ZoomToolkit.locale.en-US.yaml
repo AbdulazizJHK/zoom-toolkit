@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: AbdulazizJHK.ZoomToolkit
-PackageVersion: 2.0.0
+PackageVersion: 2.1.0
 PackageLocale: en-US
 Publisher: AbdulazizJHK
 PublisherUrl: https://github.com/AbdulazizJHK
@@ -26,6 +26,6 @@ Tags:
 - recording
 - utility
 - zoom
-ReleaseNotesUrl: https://github.com/AbdulazizJHK/zoom-toolkit/releases/tag/v2.0.0
+ReleaseNotesUrl: https://github.com/AbdulazizJHK/zoom-toolkit/releases/tag/v2.1.0
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0
