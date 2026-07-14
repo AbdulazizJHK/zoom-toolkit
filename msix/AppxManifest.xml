@@ -20,7 +20,7 @@
   <Identity
       Name="AbdulazizJHK.ZoomToolkit"
       Publisher="CN=AbdulazizJHK"
-      Version="2.0.0.0"
+      Version="2.0.1.0"
       ProcessorArchitecture="x64" />
 
   <Properties>
