@@ -956,12 +956,15 @@ class ZoomToolkitApp(ctk.CTk):
     def _start_native_drag(self, event):
         # Hand the drag to Windows (WM_NCLBUTTONDOWN + HTCAPTION): free window
         # movement plus native behaviors like Snap and drag-to-top-to-maximize.
+        # Must be PostMessageW, not SendMessageW: Send enters the modal move
+        # loop inside the ctypes call (GIL released), and Tk callbacks fired
+        # during the loop then crash Python with a fatal GIL error.
         hwnd = getattr(self, "_hwnd", None)
         if hwnd:
             try:
                 from ctypes import windll
                 windll.user32.ReleaseCapture()
-                windll.user32.SendMessageW(hwnd, 0x00A1, 2, 0)
+                windll.user32.PostMessageW(hwnd, 0x00A1, 2, 0)
             except Exception:
                 pass
 
