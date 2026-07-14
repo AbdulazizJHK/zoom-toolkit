@@ -51,6 +51,22 @@ except Exception:
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+# customtkinter 5.2.2's CTk.block_update_dimensions_event/unblock_update_dimensions_event
+# both assign False, so blocking never actually engages while it force-resets window
+# geometry on a real DPI change (e.g. dragging the window to a monitor with different
+# scaling) -- <Configure> keeps reflowing during that reset and can jump/drift the
+# window. Correct the semantics defensively; harmless if a future release fixes it.
+def _ctk_block_update_dimensions_event(self):
+    self._block_update_dimensions_event = True
+
+
+def _ctk_unblock_update_dimensions_event(self):
+    self._block_update_dimensions_event = False
+
+
+ctk.CTk.block_update_dimensions_event = _ctk_block_update_dimensions_event
+ctk.CTk.unblock_update_dimensions_event = _ctk_unblock_update_dimensions_event
+
 APP_VERSION = "2.0"
 ALL_AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg', '.aiff', '.wma']
 DEFAULT_AUDIO_EXTS = ['.wav', '.mp3']
@@ -232,13 +248,14 @@ TRANSLATIONS = {
         "tab_extractor": "Audio Extractor",
         "tab_cleaner": "Audio Cleaner",
         "tab_sorter": "Auto-Sorter",
-        "desc_extractor": "Extracts audio files from sub-folders (e.g. SD cards) into a single directory, renaming them to prevent overwriting.",
-        "desc_cleaner": "Scans a target folder and moves exceptionally short audio files (like misclicks) into a 'short_audio' folder.",
-        "desc_sorter": "Automatically organizes a folder of messy audio files into clean sub-directories based on their recording date.",
+        "desc_extractor": "Extracts audio files from sub-folders (e.g. SD cards) into a single directory, renaming them to prevent overwriting. Drop a folder onto a field, type a path, or click 📁.",
+        "desc_cleaner": "Scans a target folder and moves exceptionally short audio files (like misclicks) into a 'short_audio' folder. Drop a folder onto the field, type a path, or click 📁.",
+        "desc_sorter": "Automatically organizes a folder of messy audio files into clean sub-directories based on their recording date. Drop a folder onto the field, type a path, or click 📁.",
         "lbl_source": "Source Folder:",
         "lbl_dest": "Destination:",
         "lbl_target": "Target Folder:",
-        "lbl_thresh": "Threshold (sec):",
+        "lbl_thresh": "Threshold:",
+        "unit_seconds": "seconds",
         "lbl_cal_format": "Calendar & Format:",
         "btn_browse": "Browse",
         "chk_auto_sort": "Auto-Sort files by Date after extraction",
@@ -319,13 +336,14 @@ TRANSLATIONS = {
         "tab_extractor": "استخراج الصوت",
         "tab_cleaner": "تنظيف الصوت",
         "tab_sorter": "الفرز التلقائي",
-        "desc_extractor": "يستخرج الملفات الصوتية من المجلدات الفرعية (مثل بطاقات SD) إلى مجلد واحد، مع إعادة تسميتها لمنع الكتابة فوقها.",
-        "desc_cleaner": "يفحص المجلد المستهدف وينقل الملفات الصوتية القصيرة جداً (مثل النقرات الخاطئة) إلى مجلد 'short_audio'.",
-        "desc_sorter": "ينظم تلقائيًا مجلدًا يحتوي على ملفات صوتية غير مرتبة إلى مجلدات فرعية نظيفة بناءً على تاريخ التسجيل.",
+        "desc_extractor": "يستخرج الملفات الصوتية من المجلدات الفرعية (مثل بطاقات SD) إلى مجلد واحد، مع إعادة تسميتها لمنع الكتابة فوقها.\nاسحب مجلدًا إلى الحقل أو اكتب المسار أو انقر زر الاستعراض.",
+        "desc_cleaner": "يفحص المجلد المستهدف وينقل الملفات الصوتية القصيرة جداً (مثل النقرات الخاطئة) إلى مجلد 'short_audio'.\nاسحب مجلدًا إلى الحقل أو اكتب المسار أو انقر زر الاستعراض.",
+        "desc_sorter": "ينظم تلقائيًا مجلدًا يحتوي على ملفات صوتية غير مرتبة إلى مجلدات فرعية نظيفة بناءً على تاريخ التسجيل.\nاسحب مجلدًا إلى الحقل أو اكتب المسار أو انقر زر الاستعراض.",
         "lbl_source": "مصدر المجلد:",
         "lbl_dest": "وجهة المجلد:",
         "lbl_target": "المجلد المستهدف:",
-        "lbl_thresh": "الحد (ثواني):",
+        "lbl_thresh": "الحد:",
+        "unit_seconds": "ثانية",
         "lbl_cal_format": "التقويم والصيغة:",
         "btn_browse": "استعراض",
         "chk_auto_sort": "الفرز التلقائي للملفات حسب التاريخ بعد الاستخراج",
@@ -425,6 +443,15 @@ class ZoomToolkitApp(ctk.CTk):
         self.main_container = None
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build_ui()
+        if sys.platform.startswith("win"):
+            self.bind("<Map>", self._on_first_map, add="+")
+
+    def _on_first_map(self, event=None):
+        if getattr(self, "_titlebar_stripped", False):
+            return
+        self._titlebar_stripped = True
+        # Small delay: the caption can only be stripped once the real HWND is up.
+        self.after(50, self._strip_native_titlebar)
 
     # ── settings persistence ─────────────────────────────────────────────
     def _cal_value(self, token):
@@ -608,7 +635,6 @@ class ZoomToolkitApp(ctk.CTk):
         win = ctk.CTkToplevel(self)
         win.title(self.t("set_title", reshape=False))
         win.configure(fg_color=THEME["bg"])
-        win.geometry("470x540")
         win.transient(self)
         win.grab_set()
         # CTkToplevel resets its icon after creation, so set the gear a tick later.
@@ -661,6 +687,22 @@ class ZoomToolkitApp(ctk.CTk):
                       **self._primary_kw(THEME["amber"], THEME["amber_hi"], dark_text=True)
                       ).pack(fill="x", pady=(10, 22), **pad)
 
+        # Size to content (no fixed height -> no dead space below the button)
+        # and center over the main window. CTk's geometry() rescales sizes, so
+        # convert the pixel-measured height back to CTk units first; the +x+y
+        # offset goes through raw wm_geometry to stay in screen pixels.
+        win.update_idletasks()
+        try:
+            scale = float(win._get_window_scaling()) or 1.0
+        except Exception:
+            scale = 1.0
+        req_h = win.winfo_reqheight()
+        win.geometry(f"470x{int(req_h / scale)}")
+        dlg_w, dlg_h = int(470 * scale), req_h
+        x = self.winfo_rootx() + (self.winfo_width() - dlg_w) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - dlg_h) // 2
+        win.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+
     def t(self, key, *args, reshape=True, **kwargs):
         text = TRANSLATIONS.get(self.lang_var.get(), TRANSLATIONS["English"]).get(key, key)
         if args or kwargs:
@@ -680,6 +722,18 @@ class ZoomToolkitApp(ctk.CTk):
                 pass
             
         return text
+
+    def _sync_ex_sort_opts(self):
+        # Calendar/format only matter when auto-sort is on; keep them disabled
+        # otherwise so they don't suggest an effect they won't have.
+        state = "normal" if self.ex_auto_sort_var.get() else "disabled"
+        for name in ("opt_ex_cal", "opt_ex_format"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                try:
+                    widget.configure(state=state)
+                except Exception:
+                    pass
 
     def c(self, col, span=1, max_cols=3):
         return (max_cols - col - span) if self.lang_var.get() == "العربية" else col
@@ -726,6 +780,7 @@ class ZoomToolkitApp(ctk.CTk):
         self.font_btn      = ctk.CTkFont(family=eb,   size=15)
         self.font_caption  = ctk.CTkFont(family="Segoe UI", size=12)
         self.font_log      = ctk.CTkFont(family=mono, size=13 if is_ar else 12)
+        self.font_icon     = ctk.CTkFont(family="Segoe UI", size=17)
         # aliases for any legacy references
         self.base_font, self.bold_font, self.title_font = self.font_body, self.font_btn, self.font_wordmark
 
@@ -740,9 +795,9 @@ class ZoomToolkitApp(ctk.CTk):
                     corner_radius=9, text_color=THEME["text"], font=self.font_body, height=38)
 
     def _browse_kw(self):
-        return dict(fg_color="transparent", border_color=THEME["line"], border_width=1,
+        return dict(text="📁", fg_color="transparent", border_color=THEME["line"], border_width=1,
                     hover_color=THEME["line_soft"], text_color=THEME["muted"],
-                    corner_radius=9, height=38, width=96, font=self.font_label)
+                    corner_radius=9, height=38, width=44, font=self.font_icon)
 
     def _option_kw(self):
         return dict(fg_color=THEME["well"], button_color=THEME["line"],
@@ -786,8 +841,10 @@ class ZoomToolkitApp(ctk.CTk):
         self.main_container = ctk.CTkFrame(self, fg_color=THEME["bg"])
         self.main_container.pack(fill="both", expand=True)
         self.main_container.grid_columnconfigure(0, weight=1)
-        self.main_container.grid_rowconfigure(2, weight=1, minsize=190)
+        self.main_container.grid_rowconfigure(3, weight=1, minsize=190)
 
+        if sys.platform.startswith("win"):
+            self._build_titlebar(is_ar)
         self._build_header(is_ar)
 
         self.tabview = ctk.CTkTabview(
@@ -799,7 +856,7 @@ class ZoomToolkitApp(ctk.CTk):
             segmented_button_unselected_hover_color=THEME["line_soft"],
             text_color=THEME["text"], text_color_disabled=THEME["faint"],
         )
-        self.tabview.grid(row=1, column=0, padx=22, pady=(2, 12), sticky="ew")
+        self.tabview.grid(row=2, column=0, padx=22, pady=(2, 12), sticky="ew")
 
         self.tab_names = {
             "ex": self.t("tab_extractor"),
@@ -824,9 +881,114 @@ class ZoomToolkitApp(ctk.CTk):
         self._build_sorter_tab()
         self._build_log(is_ar)
 
+    def _build_titlebar(self, is_ar):
+        """Custom in-app window controls; the native caption bar is stripped in
+        _strip_native_titlebar so this row replaces it. Buttons keep the OS
+        convention (controls at top-right) in both language directions."""
+        bar = ctk.CTkFrame(self.main_container, fg_color=THEME["bg"], corner_radius=0)
+        bar.grid(row=0, column=0, sticky="ew")
+
+        try:
+            glyph_font = ctk.CTkFont(family="Segoe MDL2 Assets", size=10)
+            glyphs = {"min": "", "max": "", "restore": "", "close": ""}
+        except Exception:
+            glyph_font = self.font_caption
+            glyphs = {"min": "─", "max": "□", "restore": "❐", "close": "✕"}
+        self._win_glyphs = glyphs
+
+        btn_kw = dict(width=46, height=32, corner_radius=0, fg_color="transparent",
+                      text_color=THEME["muted"], font=glyph_font)
+        self.btn_win_close = ctk.CTkButton(bar, text=glyphs["close"], command=self._on_close,
+                                           hover_color="#C42B1C", **btn_kw)
+        self.btn_win_close.pack(side="right")
+        self.btn_win_max = ctk.CTkButton(bar, text=glyphs["max"], command=self._toggle_maximize,
+                                         hover_color=THEME["line_soft"], **btn_kw)
+        self.btn_win_max.pack(side="right")
+        self.btn_win_min = ctk.CTkButton(bar, text=glyphs["min"], command=self.iconify,
+                                         hover_color=THEME["line_soft"], **btn_kw)
+        self.btn_win_min.pack(side="right")
+
+        title_lbl = ctk.CTkLabel(bar, text=self.t("title"), font=self.font_caption,
+                                 text_color=THEME["faint"])
+        title_lbl.pack(side="left", padx=(14, 0))
+
+        for w in (bar, title_lbl):
+            w.bind("<B1-Motion>", self._start_native_drag)
+            w.bind("<Double-Button-1>", lambda e: self._toggle_maximize())
+        self.bind("<Configure>", self._update_max_glyph, add="+")
+
+    def _strip_native_titlebar(self):
+        """Remove only WS_CAPTION from the window style: the OS title bar goes
+        away but the resizable frame, taskbar entry, Alt-Tab, minimize/maximize
+        capability and Aero Snap all survive (unlike overrideredirect)."""
+        if not sys.platform.startswith("win"):
+            return
+        try:
+            from ctypes import windll
+            hwnd = windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                return
+            GWL_STYLE = -16
+            WS_CAPTION = 0x00C00000
+            style = windll.user32.GetWindowLongPtrW(hwnd, GWL_STYLE)
+            if style & WS_CAPTION:
+                windll.user32.SetWindowLongPtrW(hwnd, GWL_STYLE, style & ~WS_CAPTION)
+                # SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED
+                windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)
+            # Blend the remaining thin resize frame and the residual top caption
+            # strip into the app background (DWMWA_BORDER_COLOR=34 and
+            # DWMWA_CAPTION_COLOR=35 are Win11+; harmless no-ops on Win10).
+            try:
+                from ctypes import byref, c_int
+                bg = THEME["bg"].lstrip("#")
+                colorref = c_int(int(bg[4:6] + bg[2:4] + bg[0:2], 16))  # RGB -> 0x00BBGGRR
+                for attr in (34, 35):
+                    windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, byref(colorref), 4)
+                # DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2: the largest
+                # rounding DWM offers, closest match to the 14px inner panels.
+                windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(c_int(2)), 4)
+            except Exception:
+                pass
+            self._hwnd = hwnd
+        except Exception:
+            self._hwnd = None
+
+    def _start_native_drag(self, event):
+        # Hand the drag to Windows (WM_NCLBUTTONDOWN + HTCAPTION): free window
+        # movement plus native behaviors like Snap and drag-to-top-to-maximize.
+        hwnd = getattr(self, "_hwnd", None)
+        if hwnd:
+            try:
+                from ctypes import windll
+                windll.user32.ReleaseCapture()
+                windll.user32.SendMessageW(hwnd, 0x00A1, 2, 0)
+            except Exception:
+                pass
+
+    def _toggle_maximize(self):
+        try:
+            self.state("normal" if self.state() == "zoomed" else "zoomed")
+        except Exception:
+            pass
+        self._update_max_glyph()
+
+    def _update_max_glyph(self, event=None):
+        # Also fires on <Configure> so the glyph stays right when the window is
+        # maximized/restored natively (drag-to-top, Win+Up, Snap).
+        btn = getattr(self, "btn_win_max", None)
+        glyphs = getattr(self, "_win_glyphs", None)
+        if btn is None or glyphs is None:
+            return
+        try:
+            want = glyphs["restore"] if self.state() == "zoomed" else glyphs["max"]
+            if btn.cget("text") != want:
+                btn.configure(text=want)
+        except Exception:
+            pass
+
     def _build_header(self, is_ar):
         header = ctk.CTkFrame(self.main_container, fg_color=THEME["panel"], corner_radius=14)
-        header.grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 8))
+        header.grid(row=1, column=0, sticky="ew", padx=22, pady=(8, 8))
         header.grid_columnconfigure(self.c(0, max_cols=2), weight=1)
 
         left = ctk.CTkFrame(header, fg_color="transparent")
@@ -843,10 +1005,10 @@ class ZoomToolkitApp(ctk.CTk):
 
         toprow = ctk.CTkFrame(right, fg_color="transparent")
         toprow.pack(anchor=self.align("e"))
-        self.btn_settings = ctk.CTkButton(toprow, text=self.t("btn_settings"), command=self._open_settings,
+        self.btn_settings = ctk.CTkButton(toprow, text="⚙", command=self._open_settings,
                                           fg_color="transparent", border_color=THEME["line"], border_width=1,
                                           hover_color=THEME["line_soft"], text_color=THEME["muted"],
-                                          corner_radius=9, height=38, width=112, font=self.font_label)
+                                          corner_radius=9, height=38, width=44, font=self.font_icon)
         self.lang_menu = ctk.CTkOptionMenu(toprow, variable=self.lang_var, values=["English", "العربية"],
                                            command=self.change_language, width=128, **self._option_kw())
         self.lang_menu.pack(side="right")
@@ -858,9 +1020,14 @@ class ZoomToolkitApp(ctk.CTk):
         self.meter.pack(anchor=self.align("e"))
         self._set_status(False)
 
+        # With the native caption gone, the header doubles as a grab area.
+        for w in (header, left, self.title_label):
+            w.bind("<B1-Motion>", self._start_native_drag)
+            w.bind("<Double-Button-1>", lambda e: self._toggle_maximize())
+
     def _build_log(self, is_ar):
         panel = ctk.CTkFrame(self.main_container, fg_color=THEME["panel"], corner_radius=14)
-        panel.grid(row=2, column=0, sticky="nsew", padx=22, pady=(8, 20))
+        panel.grid(row=3, column=0, sticky="nsew", padx=22, pady=(8, 20))
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(2, weight=1)
 
@@ -879,15 +1046,20 @@ class ZoomToolkitApp(ctk.CTk):
         self.btn_open = ctk.CTkButton(bar, text=self.t("btn_open_folder"), command=self._open_output, width=108, **outline)
         self.btn_savelog = ctk.CTkButton(bar, text=self.t("btn_save_log"), command=self._save_log, width=94, **outline)
         self.progress_label = ctk.CTkLabel(bar, text="", font=self.font_caption, text_color=THEME["amber"])
-        self.btn_stop = ctk.CTkButton(bar, text=self.t("btn_stop"), command=self._request_cancel, width=74,
+        self.btn_stop = ctk.CTkButton(bar, text="■", command=self._request_cancel, width=36,
                                       fg_color="transparent", border_color=THEME["red"], border_width=1,
                                       hover_color=THEME["line_soft"], text_color=THEME["red"],
-                                      corner_radius=8, height=30, font=self.font_caption)
+                                      corner_radius=8, height=30, font=self.font_icon)
         self.btn_open.pack(side=self._ctrl_side)
         self.btn_savelog.pack(side=self._ctrl_side, padx=8)
         self.progress_label.pack(side=self._ctrl_side, padx=(8, 0))
         self.btn_stop.pack(side=self._ctrl_side, padx=8)
         self.btn_stop.pack_forget()
+        # Nothing to open or save until a job has run (a valid last_output_dir
+        # survives language-switch rebuilds, so re-enable then).
+        if not (self.last_output_dir and os.path.isdir(self.last_output_dir)):
+            self.btn_open.configure(state="disabled")
+            self.btn_savelog.configure(state="disabled")
 
         self.progress = ctk.CTkProgressBar(panel, mode="determinate", height=6, corner_radius=3,
                                            progress_color=THEME["amber"], fg_color=THEME["well"])
@@ -915,36 +1087,44 @@ class ZoomToolkitApp(ctk.CTk):
         self.lbl_ex_source = ctk.CTkLabel(tab, text=self.t("lbl_source"), width=112, anchor=self.align("w"),
                                           font=self.font_label, text_color=THEME["text"])
         self.lbl_ex_source.grid(row=2, column=self.c(0), padx=(18, 8), pady=9, sticky=self.align("w"))
-        self.entry_ex_source = ctk.CTkEntry(tab, textvariable=self.ex_source_path, state="readonly",
-                                            placeholder_text="—", **self._entry_kw())
+        self.entry_ex_source = ctk.CTkEntry(tab, textvariable=self.ex_source_path, **self._entry_kw())
         self.entry_ex_source.grid(row=2, column=self.c(1), padx=8, pady=9, sticky="ew")
         self._enable_dnd(self.entry_ex_source, self.ex_source_path)
-        self.btn_ex_source = ctk.CTkButton(tab, text=self.t("btn_browse"), command=self.browse_ex_source, **self._browse_kw())
+        self.btn_ex_source = ctk.CTkButton(tab, command=self.browse_ex_source, **self._browse_kw())
         self.btn_ex_source.grid(row=2, column=self.c(2), padx=(8, 18), pady=9)
 
         self.lbl_ex_dest = ctk.CTkLabel(tab, text=self.t("lbl_dest"), width=112, anchor=self.align("w"),
                                         font=self.font_label, text_color=THEME["text"])
         self.lbl_ex_dest.grid(row=3, column=self.c(0), padx=(18, 8), pady=9, sticky=self.align("w"))
-        self.entry_ex_dest = ctk.CTkEntry(tab, textvariable=self.ex_dest_path, state="readonly",
-                                          placeholder_text="—", **self._entry_kw())
+        self.entry_ex_dest = ctk.CTkEntry(tab, textvariable=self.ex_dest_path, **self._entry_kw())
         self.entry_ex_dest.grid(row=3, column=self.c(1), padx=8, pady=9, sticky="ew")
         self._enable_dnd(self.entry_ex_dest, self.ex_dest_path)
-        self.btn_ex_dest = ctk.CTkButton(tab, text=self.t("btn_browse"), command=self.browse_ex_dest, **self._browse_kw())
+        self.btn_ex_dest = ctk.CTkButton(tab, command=self.browse_ex_dest, **self._browse_kw())
         self.btn_ex_dest.grid(row=3, column=self.c(2), padx=(8, 18), pady=9)
 
-        self.chk_ex_sort = ctk.CTkCheckBox(tab, text=self.t("chk_auto_sort"), variable=self.ex_auto_sort_var,
+        # The whole auto-sort row lives in one full-width frame: neither the long
+        # checkbox text nor the wide format menu sits in a grid column, so they
+        # can't inflate the label/browse columns and steal width from the path
+        # entries (keeps entry width identical across all three tabs).
+        sort_row = ctk.CTkFrame(tab, fg_color="transparent")
+        sort_row.grid(row=4, column=0, columnspan=3, padx=18, pady=(16, 10), sticky="ew")
+        chk_side = "right" if is_ar else "left"
+        opt_side = "left" if is_ar else "right"
+        self.chk_ex_sort = ctk.CTkCheckBox(sort_row, text=self.t("chk_auto_sort"), variable=self.ex_auto_sort_var,
+                                           command=self._sync_ex_sort_opts,
                                            font=self.font_body, text_color=THEME["text"],
                                            fg_color=THEME["amber"], hover_color=THEME["amber_hi"],
                                            border_color=THEME["line"], checkmark_color=THEME["ink"], corner_radius=5)
-        self.chk_ex_sort.grid(row=4, column=self.c(0), padx=(18, 8), pady=(16, 10), sticky=self.align("w"))
-        self.opt_ex_cal = ctk.CTkOptionMenu(tab, variable=self.ex_calendar_vars,
+        self.chk_ex_sort.pack(side=chk_side)
+        self.opt_ex_format = ctk.CTkOptionMenu(sort_row, variable=self.ex_format_vars,
+                                               values=[self.t("opt_fmt_ym", reshape=False), self.t("opt_fmt_exact", reshape=False)],
+                                               width=190, **self._option_kw())
+        self.opt_ex_format.pack(side=opt_side)
+        self.opt_ex_cal = ctk.CTkOptionMenu(sort_row, variable=self.ex_calendar_vars,
                                             values=[self.t("opt_gregorian", reshape=False), self.t("opt_hijri", reshape=False)],
                                             width=118, **self._option_kw())
-        self.opt_ex_cal.grid(row=4, column=self.c(1), padx=8, pady=(16, 10), sticky=self.align("e"))
-        self.opt_ex_format = ctk.CTkOptionMenu(tab, variable=self.ex_format_vars,
-                                               values=[self.t("opt_fmt_ym", reshape=False), self.t("opt_fmt_exact", reshape=False)],
-                                               **self._option_kw())
-        self.opt_ex_format.grid(row=4, column=self.c(2), padx=(8, 18), pady=(16, 10), sticky="ew")
+        self.opt_ex_cal.pack(side=opt_side, padx=8)
+        self._sync_ex_sort_opts()
 
         self.btn_extract = ctk.CTkButton(tab, text=self.t("btn_extract"), command=self.start_extraction_thread,
                                          **self._primary_kw(THEME["amber"], THEME["amber_hi"], dark_text=True))
@@ -961,18 +1141,25 @@ class ZoomToolkitApp(ctk.CTk):
         self.lbl_cl_target = ctk.CTkLabel(tab, text=self.t("lbl_target"), width=112, anchor=self.align("w"),
                                           font=self.font_label, text_color=THEME["text"])
         self.lbl_cl_target.grid(row=2, column=self.c(0), padx=(18, 8), pady=9, sticky=self.align("w"))
-        self.entry_cl_target = ctk.CTkEntry(tab, textvariable=self.cl_target_path, state="readonly",
-                                            placeholder_text="—", **self._entry_kw())
+        self.entry_cl_target = ctk.CTkEntry(tab, textvariable=self.cl_target_path, **self._entry_kw())
         self.entry_cl_target.grid(row=2, column=self.c(1), padx=8, pady=9, sticky="ew")
         self._enable_dnd(self.entry_cl_target, self.cl_target_path)
-        self.btn_cl_target = ctk.CTkButton(tab, text=self.t("btn_browse"), command=self.browse_cl_target, **self._browse_kw())
+        self.btn_cl_target = ctk.CTkButton(tab, command=self.browse_cl_target, **self._browse_kw())
         self.btn_cl_target.grid(row=2, column=self.c(2), padx=(8, 18), pady=9)
 
         self.lbl_cl_thresh = ctk.CTkLabel(tab, text=self.t("lbl_thresh"), width=112, anchor=self.align("w"),
                                           font=self.font_label, text_color=THEME["text"])
         self.lbl_cl_thresh.grid(row=3, column=self.c(0), padx=(18, 8), pady=9, sticky=self.align("w"))
-        self.entry_thresh = ctk.CTkEntry(tab, textvariable=self.cl_threshold, **self._entry_kw())
-        self.entry_thresh.grid(row=3, column=self.c(1, span=2), columnspan=2, padx=(8, 18), pady=9, sticky="ew")
+        # A 2-3 digit number doesn't need a full-width field; keep it compact
+        # with the unit spelled out beside it.
+        thresh_row = ctk.CTkFrame(tab, fg_color="transparent")
+        thresh_row.grid(row=3, column=self.c(1, span=2), columnspan=2, padx=(8, 18), pady=9, sticky="ew")
+        unit_side = "right" if is_ar else "left"
+        self.entry_thresh = ctk.CTkEntry(thresh_row, textvariable=self.cl_threshold, width=110,
+                                         justify="center", **self._entry_kw())
+        self.entry_thresh.pack(side=unit_side)
+        ctk.CTkLabel(thresh_row, text=self.t("unit_seconds"), font=self.font_caption,
+                     text_color=THEME["muted"]).pack(side=unit_side, padx=10)
 
         self.chk_cl_preview = ctk.CTkCheckBox(tab, text=self.t("chk_preview"), variable=self.cl_preview_var,
                                               font=self.font_body, text_color=THEME["muted"],
@@ -995,24 +1182,28 @@ class ZoomToolkitApp(ctk.CTk):
         self.lbl_so_source = ctk.CTkLabel(tab, text=self.t("lbl_source"), width=112, anchor=self.align("w"),
                                           font=self.font_label, text_color=THEME["text"])
         self.lbl_so_source.grid(row=2, column=self.c(0), padx=(18, 8), pady=9, sticky=self.align("w"))
-        self.entry_so_source = ctk.CTkEntry(tab, textvariable=self.so_source_path, state="readonly",
-                                            placeholder_text="—", **self._entry_kw())
+        self.entry_so_source = ctk.CTkEntry(tab, textvariable=self.so_source_path, **self._entry_kw())
         self.entry_so_source.grid(row=2, column=self.c(1), padx=8, pady=9, sticky="ew")
         self._enable_dnd(self.entry_so_source, self.so_source_path)
-        self.btn_so_source = ctk.CTkButton(tab, text=self.t("btn_browse"), command=self.browse_so_source, **self._browse_kw())
+        self.btn_so_source = ctk.CTkButton(tab, command=self.browse_so_source, **self._browse_kw())
         self.btn_so_source.grid(row=2, column=self.c(2), padx=(8, 18), pady=9)
 
         self.lbl_so_format = ctk.CTkLabel(tab, text=self.t("lbl_cal_format"), width=112, anchor=self.align("w"),
                                           font=self.font_label, text_color=THEME["text"])
         self.lbl_so_format.grid(row=3, column=self.c(0), padx=(18, 8), pady=(16, 10), sticky=self.align("w"))
-        self.opt_so_cal = ctk.CTkOptionMenu(tab, variable=self.so_calendar_vars,
+        # Same trailing-frame arrangement as the extractor tab, so the path entry
+        # keeps a consistent width on every tab.
+        so_opts = ctk.CTkFrame(tab, fg_color="transparent")
+        so_opts.grid(row=3, column=self.c(1, span=2), columnspan=2, padx=(8, 18), pady=(16, 10), sticky=self.align("e"))
+        opt_side = "right" if is_ar else "left"
+        self.opt_so_cal = ctk.CTkOptionMenu(so_opts, variable=self.so_calendar_vars,
                                             values=[self.t("opt_gregorian", reshape=False), self.t("opt_hijri", reshape=False)],
                                             width=118, **self._option_kw())
-        self.opt_so_cal.grid(row=3, column=self.c(1), padx=8, pady=(16, 10), sticky=self.align("e"))
-        self.opt_so_format = ctk.CTkOptionMenu(tab, variable=self.so_format_vars,
+        self.opt_so_cal.pack(side=opt_side, padx=(8, 0) if is_ar else (0, 8))
+        self.opt_so_format = ctk.CTkOptionMenu(so_opts, variable=self.so_format_vars,
                                                values=[self.t("opt_fmt_ym", reshape=False), self.t("opt_fmt_exact", reshape=False)],
-                                               **self._option_kw())
-        self.opt_so_format.grid(row=3, column=self.c(2), padx=(8, 18), pady=(16, 10), sticky="ew")
+                                               width=190, **self._option_kw())
+        self.opt_so_format.pack(side=opt_side)
 
         self.chk_so_preview = ctk.CTkCheckBox(tab, text=self.t("chk_preview"), variable=self.so_preview_var,
                                               font=self.font_body, text_color=THEME["muted"],
@@ -1045,6 +1236,8 @@ class ZoomToolkitApp(ctk.CTk):
                     widget.configure(state=mode)
                 except Exception:
                     pass
+        if mode == "normal":
+            self._sync_ex_sort_opts()
 
     def worker_finished(self, msg_title_raw, msg_body_raw, error=False):
         try:
@@ -1053,6 +1246,7 @@ class ZoomToolkitApp(ctk.CTk):
             self.progress.grid_remove()
             self.btn_stop.pack_forget()
             self.set_ui_state("normal")
+            self.btn_savelog.configure(state="normal")
             if self.last_output_dir and os.path.isdir(self.last_output_dir):
                 self.btn_open.configure(state="normal")
         except Exception:

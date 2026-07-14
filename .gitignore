@@ -13,6 +13,8 @@ env/
 build/
 dist/
 *.manifest
+# ...but the hand-written Windows manifest embedded into the exe is source
+!app.manifest
 
 # Editor / OS
 .vscode/
